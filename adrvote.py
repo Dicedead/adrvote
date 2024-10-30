@@ -1,6 +1,7 @@
 import argparse
 import requests
 import tqdm
+import warnings
 import re
 
 import numpy as np
@@ -20,8 +21,8 @@ PREFERENCES_VOTE_MARKER = "PREFERENCES"
 SECTION_LIST = ["cms", "ar", "cgc", "gc", "gm", "el", "in", "sv", "ma", "mt", "ph", "mx", "sie", "sc", "if", "mte",
                 "nx", "siq", "dh"]
 
-SECTION_GROUPS = {["cms"], ["ar"], ["cgc"], ["gc"], ["gm"], ["el"], ["in"], ["sv", "nx"], ["ma"], ["mt"], ["ph", "siq"],
-                  ["mx"], ["sie"], ["sc"], ["if", "mte", "dh"]}
+SECTION_GROUPS = [["cms"], ["ar"], ["cgc"], ["gc"], ["gm"], ["el"], ["in"], ["sv", "nx"], ["ma"], ["mt"], ["ph", "siq"],
+                  ["mx"], ["sie"], ["sc"], ["if", "mte", "dh"]]
 SECTION_GROUPS = {"_".join(ls):ls for ls in SECTION_GROUPS}
 
 
@@ -115,8 +116,8 @@ def get_reps_df(reps_csv_path = "res/studentreps.csv", get_sections: bool = Fals
 
 
 def validate_emails(reps: pd.DataFrame, votesheet: pd.DataFrame):
-    vote_emails = votesheet[EMAIL_COL]
-    reps_emails = reps["Email"]
+    vote_emails = np.array(list(votesheet[EMAIL_COL]))
+    reps_emails = np.array(list(reps["Email"]))
     valid_emails = [False] * len(vote_emails)
 
     for idx, email in enumerate(vote_emails):
@@ -132,7 +133,7 @@ def get_sections(reps: pd.DataFrame, emails: List[str]):
     sections = [""] * len(emails)
 
     for idx, email in enumerate(emails):
-        for rep in reps:
+        for _, rep in reps.iterrows():
             if rep["Email"] == email:
                 sections[idx] = rep["Section"]
 
@@ -151,11 +152,18 @@ def aggreg_majority(votes: List[str]) -> str:
     for vote in votes:
         if "Yes" in vote:
             num_yes += 1
-        if "No" in vote:
+        elif "No" in vote:
             num_no += 1
         else:
             num_neutral += 1
-    return f"Yes: {num_yes} / No: {num_no}/ Neutral: {num_neutral}"
+    total_res = "no vote"
+
+    if num_yes >= num_no and num_yes > 0:
+        total_res = "yes"
+    elif num_no > num_yes and num_no > 0:
+        total_res = "no"
+
+    return f"{total_res} (Yes: {num_yes} / No: {num_no} / Neutral: {num_neutral})."
 
 
 def compute_single_vote_result(
@@ -170,7 +178,7 @@ def compute_single_vote_result(
     overall_res = aggreg(votes)
 
     section_res = dict()
-    sections = get_sections(reps, validated_sheet[EMAIL_COL])
+    sections = get_sections(reps, list(validated_sheet[EMAIL_COL]))
     for group in SECTION_GROUPS.keys():
         group_mask = [section in SECTION_GROUPS[group] for section in sections]
         section_votes = votes[group_mask]
@@ -179,7 +187,7 @@ def compute_single_vote_result(
     return overall_res, section_res
 
 
-def format_single_vote_result(title: str, overall_res: str, section_res: Dict[str]):
+def format_single_vote_result(title: str, overall_res: str, section_res: Dict[str, List[str]]):
     res = title + "\n"
     res += f"Total: {overall_res}\nPer section group:\n"
     for group in SECTION_GROUPS:
@@ -193,16 +201,17 @@ def output_votes_results(
     votesheet: pd.DataFrame,
     output_file_path: str
 ):
-    res = output_file_path + "\n\n"
-    for column in votesheet.columns:
-        decision_col = DECISION_VOTE_MARKER in column
-        preference_col = PREFERENCES_VOTE_MARKER in column
-        if decision_col or preference_col:
-            vote_res = compute_single_vote_result(reps, votesheet, column, aggreg_majority if decision_col else aggreg_mean)
-            res += format_single_vote_result(column, *vote_res)
+    with warnings.catch_warnings(action="ignore"):
+        res = output_file_path + "\n\n"
+        for column in votesheet.columns:
+            decision_col = DECISION_VOTE_MARKER in column
+            preference_col = PREFERENCES_VOTE_MARKER in column
+            if decision_col or preference_col:
+                vote_res = compute_single_vote_result(reps, votesheet, column, aggreg_majority if decision_col else aggreg_mean)
+                res += format_single_vote_result(column, *vote_res)
 
-    with open(output_file_path, "w", encoding='utf-8') as file:
-        file.write(res)
+        with open(output_file_path, "w", encoding='utf-8') as file:
+            file.write(res)
 
 def run(
     input_csv_vote_path: str,
