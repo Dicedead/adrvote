@@ -10,6 +10,8 @@ import pandas as pd
 from typing import List, Callable, Dict
 from bs4 import BeautifulSoup
 
+ONLINE_VOTE = True
+
 FOLDER_SECTIONLISTS = "res/sectionlists"
 FOLDER_VOTERES = "votes/results"
 
@@ -106,18 +108,18 @@ def load_emails(reps: pd.DataFrame):
     return reps_emails
 
 
-def get_reps_df(reps_csv_path = "res/studentreps.csv", get_sections: bool = False, get_emails: bool = False):
+def get_reps_df(reps_csv_path = "res/studentreps.csv", reload_sections: bool = False, reload_emails: bool = False):
     reps = pd.read_csv(reps_csv_path)
-    if get_sections:
+    if reload_sections:
         reps["Section"] = load_sections(reps)
-    if get_emails:
+    if reload_emails:
         reps["Email"] = load_emails(reps)
     return reps
 
 
 def validate_emails(reps: pd.DataFrame, votesheet: pd.DataFrame):
     vote_emails = np.array(list(votesheet[EMAIL_COL]))
-    reps_emails = np.array(list(reps["Email"]))
+    reps_emails = np.array(list(reps["Email"] if ONLINE_VOTE else reps[reps["Présence"] == "TRUE"]["Email"]))
     valid_emails = [False] * len(vote_emails)
 
     for idx, email in enumerate(vote_emails):
@@ -142,7 +144,7 @@ def get_sections(reps: pd.DataFrame, emails: List[str]):
 
 def aggreg_mean(scores: List[str]) -> str:
     int_scores = [int(s) for s in scores]
-    return f"{np.mean(int_scores)}/10 (Sum: {np.sum(int_scores)} with {len(scores)}) votes."
+    return f"{np.mean(int_scores)}/10 (Sum: {np.sum(int_scores)} with {len(scores)})."
 
 
 def aggreg_majority(votes: List[str]) -> str:
@@ -159,9 +161,9 @@ def aggreg_majority(votes: List[str]) -> str:
     total_res = "no vote"
 
     if num_yes >= num_no and num_yes > 0:
-        total_res = "yes"
+        total_res = "YES"
     elif num_no > num_yes and num_no > 0:
-        total_res = "no"
+        total_res = "NO"
 
     return f"{total_res} (Yes: {num_yes} / No: {num_no} / Neutral: {num_neutral})."
 
@@ -221,7 +223,7 @@ def run(
     if reps_csv_path is None:
         reps = get_reps_df()
     else:
-        reps = get_reps_df(reps_csv_path, get_sections=True, get_emails=True)
+        reps = get_reps_df(reps_csv_path, reload_sections=True, reload_emails=True)
 
     votesheet = pd.read_csv(input_csv_vote_path)
     output_votes_results(reps, votesheet, output_file_path)
