@@ -10,6 +10,10 @@ import pandas as pd
 from typing import List, Callable, Dict
 from bs4 import BeautifulSoup
 
+"""
+adrvote validates and outputs the results of the votes of the Representation Assembly.
+"""
+
 ONLINE_VOTE = True
 
 FOLDER_SECTIONLISTS = "res/sectionlists"
@@ -28,14 +32,23 @@ SECTION_GROUPS = [["cms"], ["ar"], ["cgc"], ["gc"], ["gm"], ["el"], ["in"], ["sv
 SECTION_GROUPS = {"_".join(ls):ls for ls in SECTION_GROUPS}
 
 
-def extract_names_from_html(html_content: str):
+def extract_names_from_html(html_content: str) -> List[str]:
+    """
+    Get names from cadi section's student list.
+
+    :param html_content: str, cadi section's student list html.
+    :return: List of names of students in section.
+    """
     soup = BeautifulSoup(html_content, 'html.parser')
     name_elements = soup.select('ul a')
     names = [element.get_text(strip=True) for element in name_elements]
     return names
 
 
-def fetch_html_from(url: str):
+def fetch_html_from(url: str) -> str | None:
+    """
+    Fetch html from url.
+    """
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -47,14 +60,19 @@ def fetch_html_from(url: str):
 
 
 def save_sectionlist(url: str, filename: str):
+    """
+    Save section's students list to file.
+    """
     with open(filename, 'w', encoding='utf-8') as file:
         file.write("\n".join(extract_names_from_html(fetch_html_from(url))))
 
     print(f"Content from {url} has been saved to {filename}.")
 
 
-
-def check_string_in_file(file_path, search_string):
+def check_string_in_file(file_path: str, search_string: str) -> bool:
+    """
+    Check if a string is in a file.
+    """
     try:
         with open(file_path, 'r') as file:
             content = file.read()
@@ -64,7 +82,13 @@ def check_string_in_file(file_path, search_string):
         return False
 
 
-def find_mail_username(html_content: str):
+def find_mail_username(html_content: str) -> str:
+    """
+    Find mail username firstname.lastname in an EPFL people page.
+
+    :param html_content: html of the EPFL people page.
+    :return: str, mail username.
+    """
     pattern = r"documentURI\.replace\(re,\s*'([^']+)'\)"
     match = re.search(pattern, html_content)
 
@@ -80,13 +104,19 @@ def create_email_from_username(username: str):
 
 
 def update_sections():
+    """
+    Update local lists of students per section.
+    """
     for section in SECTION_LIST:
         url = f"https://cadiwww.epfl.ch/listes/viewlist?list=etudiants.{section}@epfl.ch"
         filename = f"{FOLDER_SECTIONLISTS}/{section}"
         save_sectionlist(url, filename)
 
 
-def load_sections(reps: pd.DataFrame):
+def load_sections(reps: pd.DataFrame) -> List[str]:
+    """
+    Load sections of students in given dataframe.
+    """
     reps_names = reps["Name"]
     reps_sections = [""] * len(reps_names)
     for i in tqdm.trange(len(reps_names)):
@@ -97,7 +127,10 @@ def load_sections(reps: pd.DataFrame):
     return reps_sections
 
 
-def load_emails(reps: pd.DataFrame):
+def load_emails(reps: pd.DataFrame) -> List[str]:
+    """
+    Load emails of students in given dataframe.
+    """
     reps_scipers = reps["Sciper"]
     reps_emails = [""] * len(reps_scipers)
     for i in tqdm.trange(len(reps_scipers)):
@@ -108,7 +141,10 @@ def load_emails(reps: pd.DataFrame):
     return reps_emails
 
 
-def get_reps_df(reps_csv_path = "res/studentreps.csv", reload_sections: bool = False, reload_emails: bool = False):
+def get_reps_df(reps_csv_path = "res/studentreps.csv", reload_sections: bool = False, reload_emails: bool = False) -> pd.DataFrame:
+    """
+    Read initial dataframe and optionally reload sections and emails.
+    """
     reps = pd.read_csv(reps_csv_path)
     if reload_sections:
         reps["Section"] = load_sections(reps)
@@ -117,7 +153,10 @@ def get_reps_df(reps_csv_path = "res/studentreps.csv", reload_sections: bool = F
     return reps
 
 
-def validate_emails(reps: pd.DataFrame, votesheet: pd.DataFrame):
+def validate_emails(reps: pd.DataFrame, votesheet: pd.DataFrame) -> List[bool]:
+    """
+    Return mask of valid emails.
+    """
     vote_emails = np.array(list(votesheet[EMAIL_COL]))
     reps_emails = np.array(list(reps["Email"] if ONLINE_VOTE else reps[reps["Présence"] == "TRUE"]["Email"]))
     valid_emails = [False] * len(vote_emails)
@@ -131,7 +170,10 @@ def validate_emails(reps: pd.DataFrame, votesheet: pd.DataFrame):
     return valid_emails
 
 
-def get_sections(reps: pd.DataFrame, emails: List[str]):
+def get_sections(reps: pd.DataFrame, emails: List[str]) -> List[str]:
+    """
+    Get list of sections corresponding to given (valid) emails in same order.
+    """
     sections = [""] * len(emails)
 
     for idx, email in enumerate(emails):
@@ -143,11 +185,17 @@ def get_sections(reps: pd.DataFrame, emails: List[str]):
 
 
 def aggreg_mean(scores: List[str]) -> str:
+    """
+    Output mean of scores.
+    """
     int_scores = [int(s) for s in scores]
     return f"{np.mean(int_scores)}/10 (Sum: {np.sum(int_scores)} with {len(scores)})."
 
 
 def aggreg_majority(votes: List[str]) -> str:
+    """
+    Output counts of yes/no/neutral votes.
+    """
     num_yes = 0
     num_no = 0
     num_neutral = 0
@@ -173,7 +221,16 @@ def compute_single_vote_result(
         votesheet: pd.DataFrame,
         vote_col: str,
         aggreg: Callable[[List[str]], str]
-):
+) -> (str, Dict[str, List[str]]):
+    """
+    Compute vote result for one single question.
+
+    :param reps: pd.DataFrame, dataframe of representatives.
+    :param votesheet: pd.DataFrame, dataframe of votes.
+    :param vote_col: str, label of vote column.
+    :param aggreg: Callable[[List[str]], str], aggregation function for votes.
+    :return: (str, Dict[str, List[str]]), overall vote result and per section result
+    """
     valid_emails = validate_emails(reps, votesheet)
     validated_sheet = votesheet[valid_emails]
     votes = validated_sheet[vote_col]
@@ -189,7 +246,10 @@ def compute_single_vote_result(
     return overall_res, section_res
 
 
-def format_single_vote_result(title: str, overall_res: str, section_res: Dict[str, List[str]]):
+def format_single_vote_result(title: str, overall_res: str, section_res: Dict[str, List[str]]) -> str:
+    """
+    Prettify and combine overall and per section result in one string.
+    """
     res = title + "\n"
     res += f"Total: {overall_res}\nPer section group:\n"
     for group in SECTION_GROUPS:
@@ -203,6 +263,13 @@ def output_votes_results(
     votesheet: pd.DataFrame,
     output_file_path: str
 ):
+    """
+    Output all votes results into one output file.
+
+    :param reps: pd.DataFrame, dataframe of representatives.
+    :param votesheet: pd.DataFrame, dataframe of votes.
+    :param output_file_path: str, text file to save results of all votes of current file.
+    """
     with warnings.catch_warnings(action="ignore"):
         res = output_file_path + "\n\n"
         for column in votesheet.columns:
@@ -220,6 +287,9 @@ def run(
     output_file_path: str,
     reps_csv_path: str = None,
 ):
+    """
+    Compute then output vote results.
+    """
     if reps_csv_path is None:
         reps = get_reps_df()
     else:
