@@ -3,7 +3,6 @@ import requests
 import tqdm
 import warnings
 import re
-import math
 
 import numpy as np
 import pandas as pd
@@ -16,6 +15,8 @@ adrvote validates and outputs the results of the votes of the Representation Ass
 """
 
 ONLINE_VOTE = True
+HIDE_SECTION_DECI_VOTES = False
+HIDE_SECTION_PREF_VOTES = False
 
 FOLDER_SECTIONLISTS = "res/sectionlists"
 FOLDER_VOTERES = "votes/results"
@@ -251,14 +252,16 @@ def compute_single_vote_result(
     return overall_res, section_res
 
 
-def format_single_vote_result(title: str, overall_res: str, section_res: Dict[str, List[str]]) -> str:
+def format_single_vote_result(title: str, overall_res: str, section_res: Dict[str, List[str]], hide_sec_vote: bool) -> str:
     """
     Prettify and combine overall and per section result in one string.
     """
     res = title + "\n"
-    res += f"Total: {overall_res}\nPer section group:\n"
-    for group in SECTION_GROUPS:
-        res += f"{group}: {section_res[group]}\n"
+    res += f"Total: {overall_res}\n"
+    if not hide_sec_vote:
+        res += "Per section group:\n"
+        for group in SECTION_GROUPS:
+            res += f"{group}: {section_res[group]}\n"
     res += "\n"
     return res
 
@@ -266,7 +269,9 @@ def format_single_vote_result(title: str, overall_res: str, section_res: Dict[st
 def output_votes_results(
     reps: pd.DataFrame,
     votesheet: pd.DataFrame,
-    output_file_path: str
+    output_file_path: str,
+    hide_section_res_deci: bool = HIDE_SECTION_DECI_VOTES,
+    hide_section_res_pref: bool = HIDE_SECTION_PREF_VOTES
 ):
     """
     Output all votes results into one output file.
@@ -274,6 +279,8 @@ def output_votes_results(
     :param reps: pd.DataFrame, dataframe of representatives.
     :param votesheet: pd.DataFrame, dataframe of votes.
     :param output_file_path: str, text file to save results of all votes of current file.
+    :param hide_section_res_deci: bool, whether to hide section results for decision votes or not.
+    :param hide_section_res_pref: bool, whether to hide section results for preference votes or not.
     """
     with warnings.catch_warnings(action="ignore"):
         res = output_file_path + "\n\n"
@@ -282,8 +289,9 @@ def output_votes_results(
             preference_col = PREFERENCES_VOTE_MARKER in column
             if decision_col or preference_col:
                 print(f"Vote: {column}")
-                vote_res = compute_single_vote_result(reps, votesheet, column, aggreg_majority if decision_col else aggreg_mean)
-                res += format_single_vote_result(column, *vote_res)
+                overall_res, section_res = compute_single_vote_result(reps, votesheet, column, aggreg_majority if decision_col else aggreg_mean)
+                hide_sec_vote = (decision_col and hide_section_res_deci) or (hide_section_res_pref and preference_col)
+                res += format_single_vote_result(column, overall_res, section_res, hide_sec_vote)
                 print()
 
         with open(output_file_path, "w", encoding='utf-8') as file:
