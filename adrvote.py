@@ -219,7 +219,12 @@ def aggreg_majority(votes: List[str]) -> str:
     elif num_no > num_yes and num_no > 0:
         total_res = "NO"
 
-    return f"{total_res} (Yes: {num_yes} / No: {num_no} / Neutral: {num_neutral})."
+    yes_no_votes = num_yes + num_no
+    if yes_no_votes == 0:
+        return f"{total_res} (Yes: {num_yes} / No: {num_no} / Neutral: {num_neutral})."
+
+    return (f"{total_res} (Yes: {num_yes}/{yes_no_votes}: {100 * num_yes/yes_no_votes:.2f}%"
+            f" / No: {num_no}/{yes_no_votes}: {100 * num_no/yes_no_votes:.2f}% / Neutral: {num_neutral}).")
 
 
 def compute_single_vote_result(
