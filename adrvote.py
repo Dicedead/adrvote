@@ -3,6 +3,7 @@ import requests
 import tqdm
 import warnings
 import re
+import math
 
 import numpy as np
 import pandas as pd
@@ -153,21 +154,25 @@ def get_reps_df(reps_csv_path = "res/studentreps.csv", reload_sections: bool = F
     return reps
 
 
-def validate_emails(reps: pd.DataFrame, votesheet: pd.DataFrame) -> List[bool]:
+def is_nan(val):
+    return val != val
+
+
+def validate_votes(reps: pd.DataFrame, votesheet: pd.DataFrame, vote_col: str) -> List[bool]:
     """
-    Return mask of valid emails.
+    Return mask of valid vote indices.
     """
     vote_emails = np.array(list(votesheet[EMAIL_COL]))
     reps_emails = np.array(list(reps["Email"] if ONLINE_VOTE else reps[reps["Présence"] == "TRUE"]["Email"]))
-    valid_emails = [False] * len(vote_emails)
+    valid_vote_indices = [False] * len(vote_emails)
 
     for idx, email in enumerate(vote_emails):
-        if email in reps_emails:
-            valid_emails[idx] = True
+        if email in reps_emails and not is_nan(votesheet[vote_col][idx]):
+            valid_vote_indices[idx] = True
         else:
-            print(f"Invalid email {email}.")
+            print(f"Invalid vote, {email} - {votesheet[vote_col][idx]}.")
 
-    return valid_emails
+    return valid_vote_indices
 
 
 def get_sections(reps: pd.DataFrame, emails: List[str]) -> List[str]:
@@ -231,8 +236,8 @@ def compute_single_vote_result(
     :param aggreg: Callable[[List[str]], str], aggregation function for votes.
     :return: (str, Dict[str, List[str]]), overall vote result and per section result
     """
-    valid_emails = validate_emails(reps, votesheet)
-    validated_sheet = votesheet[valid_emails]
+    valid_indices = validate_votes(reps, votesheet, vote_col)
+    validated_sheet = votesheet[valid_indices]
     votes = validated_sheet[vote_col]
     overall_res = aggreg(votes)
 
@@ -276,8 +281,10 @@ def output_votes_results(
             decision_col = DECISION_VOTE_MARKER in column
             preference_col = PREFERENCES_VOTE_MARKER in column
             if decision_col or preference_col:
+                print(f"Vote: {column}")
                 vote_res = compute_single_vote_result(reps, votesheet, column, aggreg_majority if decision_col else aggreg_mean)
                 res += format_single_vote_result(column, *vote_res)
+                print()
 
         with open(output_file_path, "w", encoding='utf-8') as file:
             file.write(res)
