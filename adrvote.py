@@ -21,6 +21,7 @@ HIDE_SECTION_PREF_VOTES = False
 FOLDER_SECTIONLISTS = "res/sectionlists"
 FOLDER_VOTERES = "votes/results"
 
+SCIPER_NOT_FOUND = "SCIPER_NOT_FOUND"
 EMAIL_COL = "Adresse e-mail"
 
 DECISION_VOTE_MARKER = "DECISION"
@@ -68,6 +69,9 @@ def save_sectionlist(url: str, filename: str):
     with open(filename, 'w', encoding='utf-8') as file:
         file.write("\n".join(extract_names_from_html(fetch_html_from(url))))
 
+    with open(f"{filename}_raw", 'w', encoding='utf-8') as file:
+        file.write(fetch_html_from(url))
+
     print(f"Content from {url} has been saved to {filename}.")
 
 
@@ -101,6 +105,28 @@ def find_mail_username(html_content: str) -> str:
     raise ValueError(f"Could not find mail username for {re.search(pattern, html_content).group(1)}")
 
 
+def find_sciper_from_name(html_content: str, student_name: str) -> str:
+    """
+    Find sciper of a student representative.
+
+    :param html_content: html of the student rep's section cadi page.
+    :param student_name: name of student rep as shown on cadi.
+    :return: sciper, str.
+    """
+    soup = BeautifulSoup(html_content, 'html.parser')
+    links = soup.find_all('a', href=True)
+
+    for link in links:
+        name = link.get_text(strip=True)
+        sciper_url = link['href']
+
+        if name == student_name:
+            sciper_number = sciper_url.split('sciper=')[-1]
+            return sciper_number
+
+    return SCIPER_NOT_FOUND
+
+
 def create_email_from_username(username: str):
     return f"{username}@epfl.ch"
 
@@ -113,6 +139,22 @@ def update_sections():
         url = f"https://cadiwww.epfl.ch/listes/viewlist?list=etudiants.{section}@epfl.ch"
         filename = f"{FOLDER_SECTIONLISTS}/{section}"
         save_sectionlist(url, filename)
+
+
+def load_scipers(reps: pd.DataFrame) -> List[str]:
+    """
+    Load scipers of student reps.
+    """
+    reps_names = reps["Name"]
+    reps_scipers = [""] * len(reps_names)
+    for i in tqdm.trange(len(reps_names)):
+        for section in SECTION_LIST:
+            if check_string_in_file(f"{FOLDER_SECTIONLISTS}/{section}", reps_names[i]):
+                with open(f"{FOLDER_SECTIONLISTS}/{section}_raw", 'r') as file:
+                    content = file.read()
+                    reps_scipers[i] = find_sciper_from_name(content, reps_names[i])
+
+    return reps_scipers
 
 
 def load_sections(reps: pd.DataFrame) -> List[str]:
@@ -143,11 +185,18 @@ def load_emails(reps: pd.DataFrame) -> List[str]:
     return reps_emails
 
 
-def get_reps_df(reps_csv_path = "res/studentreps.csv", reload_sections: bool = False, reload_emails: bool = False) -> pd.DataFrame:
+def get_reps_df(
+        reps_csv_path = "res/studentreps.csv",
+        reload_sections: bool = False,
+        reload_emails: bool = False,
+        reload_scipers: bool = False,
+) -> pd.DataFrame:
     """
     Read initial dataframe and optionally reload sections and emails.
     """
     reps = pd.read_csv(reps_csv_path)
+    if reload_scipers:
+        reps["Sciper"] = load_scipers(reps)
     if reload_sections:
         reps["Section"] = load_sections(reps)
     if reload_emails:
@@ -313,7 +362,7 @@ def run(
     if reps_csv_path is None:
         reps = get_reps_df()
     else:
-        reps = get_reps_df(reps_csv_path, reload_sections=True, reload_emails=True)
+        reps = get_reps_df(reps_csv_path, reload_sections=True, reload_emails=True, reload_scipers=True)
 
     votesheet = pd.read_csv(input_csv_vote_path)
     output_votes_results(reps, votesheet, output_file_path)
@@ -338,7 +387,7 @@ def create_parser():
         "--reps_csv_path",
         type=str,
         default=None,
-        help="Path to CSV file containing raw reps.",
+        help="Path to CSV file containing raw reps. Updates scipers, sections, emails.",
     )
 
     return parser
