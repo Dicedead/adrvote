@@ -16,7 +16,7 @@ adrvote validates and outputs the results of the votes of the Representation Ass
 
 ONLINE_VOTE = True
 HIDE_SECTION_DECI_VOTES = False
-HIDE_SECTION_PREF_VOTES = False
+HIDE_SECTION_PREF_VOTES = True
 
 FOLDER_SECTIONLISTS = "res/sectionlists"
 FOLDER_VOTERES = "votes/results"
@@ -195,12 +195,23 @@ def get_reps_df(
     Read initial dataframe and optionally reload sections and emails.
     """
     reps = pd.read_csv(reps_csv_path)
+
+    reload_anything = reload_scipers or reload_sections or reload_emails
+    if reload_anything:
+        update_sections()
+
     if reload_scipers:
         reps["Sciper"] = load_scipers(reps)
     if reload_sections:
         reps["Section"] = load_sections(reps)
     if reload_emails:
         reps["Email"] = load_emails(reps)
+
+    if reload_anything:
+        reps.to_csv(reps_csv_path, index=False)
+        reps_xlsx_path = f"{reps_csv_path.split('.csv')[0]}.xlsx"
+        reps.to_excel(reps_xlsx_path, engine='xlsxwriter', index=False)
+
     return reps
 
 

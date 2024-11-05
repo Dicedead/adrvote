@@ -1,0 +1,7 @@
+bs4
+xlsxwriter
+pandas
+numpy
+openpyxl
+requests
+tqdm
