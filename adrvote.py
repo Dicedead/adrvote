@@ -177,7 +177,9 @@ def load_emails(reps: pd.DataFrame) -> List[str]:
     """
     reps_scipers = reps["Sciper"]
     reps_emails = [""] * len(reps_scipers)
-    for i in tqdm.trange(len(reps_scipers)):
+    start = 0
+    end = len(reps_scipers)
+    for i in tqdm.trange(start, end):
         sciper = reps_scipers[i]
         username = find_mail_username(fetch_html_from(f"https://people.epfl.ch/{sciper}"))
         reps_emails[i] = create_email_from_username(username)
@@ -190,6 +192,7 @@ def get_reps_df(
         reload_sections: bool = False,
         reload_emails: bool = False,
         reload_scipers: bool = False,
+        resave: bool = False
 ) -> pd.DataFrame:
     """
     Read initial dataframe and optionally reload sections and emails.
@@ -207,7 +210,7 @@ def get_reps_df(
     if reload_emails:
         reps["Email"] = load_emails(reps)
 
-    if reload_anything:
+    if reload_anything or resave:
         reps.to_csv(reps_csv_path, index=False)
         reps_xlsx_path = f"{reps_csv_path.split('.csv')[0]}.xlsx"
         reps.to_excel(reps_xlsx_path, engine='xlsxwriter', index=False)
